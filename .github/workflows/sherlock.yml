@@ -1,0 +1,71 @@
+name: Sherlock Username Search
+
+on:
+  workflow_dispatch:
+    inputs:
+      usernames:
+        description: "用户名，多个用户名用英文逗号分隔"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  search:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Sherlock
+        run: pip install .
+
+      - name: Search usernames
+        env:
+          USERNAMES: ${{ inputs.usernames }}
+        run: |
+          mkdir -p results
+          python - <<'PY'
+          import os
+          import subprocess
+
+          usernames = [
+              x.strip()
+              for x in os.environ["USERNAMES"].split(",")
+              if x.strip()
+          ]
+
+          if not usernames:
+              raise SystemExit("请输入至少一个用户名")
+
+          if len(usernames) > 20:
+              raise SystemExit("单次最多搜索20个用户名")
+
+          result = subprocess.run([
+              "sherlock",
+              *usernames,
+              "--folderoutput", "results",
+              "--print-found",
+              "--timeout", "20",
+              "--no-color"
+          ])
+
+          print("搜索进程结束，退出代码：", result.returncode)
+          PY
+
+      - name: Save search results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sherlock-results
+          path: results/
+          if-no-files-found: warn
+          retention-days: 7
